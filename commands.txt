@@ -14,13 +14,13 @@ Install: Winscp
 Action -> security -> Modify Iam Role
 
 # connect to EC2
-ssh -i "dependency.pem" ec2-user@ec2-174-129-182-6.compute-1.amazonaws.com
+ssh -i "weatherapi.pem" ec2-user@ec2-34-228-224-113.compute-1.amazonaws.com
 
 # Copy files to EC2
-scp -r -i "dependency.pem" docker_exp ec2-user@ec2-174-129-182-6.compute-1.amazonaws.com:/home/ec2-user/docker_exp
+scp -r -i "weatherapi.pem" docker_exp ec2-user@ec2-34-228-224-113.compute-1.amazonaws.com:/home/ec2-user/docker_exp
 
 # connect with port forwarding
-ssh -i "dependency.pem" ec2-54-196-203-200.compute-1.amazonaws.com -L 8080:localhost:8080 -L 5050:localhost:5050 -L 5433:localhost:5433 -L 5555:localhost:5555 
+ssh -i "weatherapi.pem" ec2-user@ec2-34-228-224-113.compute-1.amazonaws.com -L 8080:localhost:8080 -L 5050:localhost:5050 -L 5433:localhost:5433 -L 5555:localhost:5555 
 
 - Commands to install Docker
 sudo yum update -y
@@ -41,7 +41,7 @@ sudo systemctl stop docker
 
 
 cd docker_exp 
-docker-compose up
+docker-compose up -d --build
 
 #How to access tools in local machine
     List Docker containers running: docker ps
@@ -128,4 +128,4 @@ Press Login
 
 ### Give Permission 
 
-sudo chown -R ec2-user:ec2-user /home/ec2-user/docker_exp
+sudo chown -R ec2-user:ec2-user /home/ec2-user/docker_exp/docker_exp/dags
