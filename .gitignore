@@ -1,0 +1,9 @@
+.env
+*.pem
+__pycache__/
+*.pyc
+.venv/
+docker_exp/logs/
+docker_exp/plugins/
+docker_exp/config/
+.DS_Store

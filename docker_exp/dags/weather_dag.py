@@ -1,4 +1,18 @@
+"""Daily weather ETL: OpenWeather API -> transform -> PostgreSQL + Amazon S3.
+
+Configuration (set in the Airflow UI or as environment variables):
+- Airflow Variable `openweather_api_key`: your OpenWeather API key
+- Airflow Connection `weathermap_api`: HTTP, host https://api.openweathermap.org
+- Airflow Connection `postgres_default`: the PostgreSQL database holding `weather_data`
+- Env `WEATHER_S3_BUCKET`: target bucket (default: s3-openweather-api)
+- Env `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` / `AWS_SESSION_TOKEN`: optional;
+  when unset, the EC2 instance's IAM role is used.
+"""
+
+import os
+
 from airflow import DAG
+from airflow.sdk import Variable
 from datetime import timedelta, datetime
 from airflow.providers.http.sensors.http import HttpSensor
 from airflow.providers.http.hooks.http import HttpHook
@@ -12,11 +26,15 @@ def kelvin_to_fahrenheit(temp_in_kelvin):
     return (temp_in_kelvin - 273.15) * (9 / 5) + 32
 
 
-# ---------- Replace SimpleHttpOperator with this ----------
+CITY = "Portland"
+S3_BUCKET = os.getenv("WEATHER_S3_BUCKET", "s3-openweather-api")
+
+
 def extract_weather_data(**context):
     http_hook = HttpHook(method='GET', http_conn_id='weathermap_api')
+    api_key = Variable.get("openweather_api_key")
     response = http_hook.run(
-        endpoint='/data/2.5/weather?q=Portland&APPID='
+        endpoint=f'/data/2.5/weather?q={CITY}&APPID={api_key}'
     )
     data = response.json()
     context['ti'].xcom_push(key='weather_data', value=data)
@@ -56,16 +74,19 @@ def transform_load_data(task_instance):
 
     df_data = pd.DataFrame([transformed_data])
 
-    aws_credentials = {
-        "key": "",
-        "secret": "",
-        "token": ""
-    }
+    # Explicit credentials are optional; without them s3fs falls back to the instance IAM role.
+    aws_credentials = {}
+    if os.getenv("AWS_ACCESS_KEY_ID"):
+        aws_credentials = {
+            "key": os.getenv("AWS_ACCESS_KEY_ID"),
+            "secret": os.getenv("AWS_SECRET_ACCESS_KEY"),
+            "token": os.getenv("AWS_SESSION_TOKEN"),
+        }
 
     now = datetime.now()
     dt_string = now.strftime("%d%m%Y%H%M%S")
     file_name = f"current_weather_data_portland_{dt_string}.csv"
-    df_data.to_csv(f"s3://s3-openweather-api/{file_name}", index=False, storage_options=aws_credentials)
+    df_data.to_csv(f"s3://{S3_BUCKET}/{file_name}", index=False, storage_options=aws_credentials or None)
 
     # ------------------ Save to PostgreSQL ------------------
     postgres_hook = PostgresHook(postgres_conn_id='postgres_default')
@@ -106,7 +127,7 @@ with DAG(
     is_weather_api_ready = HttpSensor(
         task_id='is_weather_api_ready',
         http_conn_id='weathermap_api',
-        endpoint='/data/2.5/weather?q=Portland&APPID='
+        endpoint='/data/2.5/weather?q=Portland&APPID={{ var.value.openweather_api_key }}'
     )
 
     extract_weather_data = PythonOperator(
